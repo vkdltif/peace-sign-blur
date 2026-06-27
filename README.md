@@ -14,7 +14,7 @@ Aplikasi webcam Python yang mendeteksi **peace sign** (✌️) dan memberikan ef
 
 ```bash
 # 1. Clone repo ini
-git clone https://github.com/username/peace-sign-blur.git
+git clone https://github.com/vkdltif/peace-sign-blur.git
 cd peace-sign-blur
 
 # 2. Install dependency
