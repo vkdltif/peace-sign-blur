@@ -4,7 +4,7 @@ Aplikasi webcam Python yang mendeteksi **peace sign** (✌️) dan memberikan ef
 
 ## Fitur
 - 🎥 Real-time webcam dengan mirror effect
-- ✌️ Deteksi peace sign (1 atau 2 tangan) pakai MediaPipe
+- ✌️ Deteksi peace sign (1 atau 2 tangan) pakai MediaPipe Tasks API
 - 🎨 Blur aesthetic: motion blur + radial blur + vignette + chromatic aberration
 - 🎵 Trigger lagu saat peace sign pertama kali terdeteksi
 - 🔄 Lagu tetap berjalan walau tangan diangkat/turun, blur tetap aktif sampai lagu selesai
@@ -34,7 +34,8 @@ peace-sign-blur/
 ├── requirements.txt
 ├── README.md
 └── assets/
-    └── your_music.mp3   <-- TARUH LAGU KAMU DI SINI
+    ├── your_music.mp3       <-- TARUH LAGU KAMU DI SINI
+    └── hand_landmarker.task <-- (auto-download saat pertama kali run)
 ```
 
 ## Cara Pakai
@@ -43,6 +44,7 @@ peace-sign-blur/
 python main.py
 ```
 
+- Saat pertama kali run, program akan **auto-download model** `hand_landmarker.task` (~10MB)
 - Tunjukkan **peace sign** (✌️) ke kamera
 - Tahan sebentar sampai counter penuh (5 frame)
 - **Blur aesthetic** aktif + **lagu** mulai berputar
@@ -70,8 +72,30 @@ Efek blur yang digunakan:
 5. **Vignette** - gelap di pinggir layar
 6. **Chromatic Aberration** - RGB shift ringan
 
-## Catatan
-- Pastikan pencahayaan cukup terang agar deteksi tangan akurat
-- Peace sign = telunjuk & jari tengah terbuka, jari manis & kelingking tertutup
-- Ibu jari bebas (bisa terbuka/tutup)
-- Kalau muncul error "Could not find a version", pastikan Python kamu 3.9+ dan pip sudah update: `pip install --upgrade pip`
+## Catatan Penting
+
+- **Python**: Harus Python 3.9 atau lebih baru
+- **MediaPipe**: Menggunakan Tasks API (`mediapipe.tasks.vision.HandLandmarker`) - kompatibel versi 0.10.30+
+- **Model**: Auto-download `hand_landmarker.task` saat pertama kali run (butuh internet)
+- **Pencahayaan**: Pastikan cukup terang agar deteksi tangan akurat
+- **Peace Sign**: Telunjuk & jari tengah terbuka, jari manis & kelingking tertutup
+- **Ibu Jari**: Bebas (bisa terbuka/tutup)
+
+## Troubleshooting
+
+### Error "No module named 'mediapipe'"
+```bash
+pip install mediapipe
+```
+
+### Error "Could not find a version"
+```bash
+pip install --upgrade pip
+pip install mediapipe
+```
+
+### Model tidak terdownload
+Bisa download manual dari:
+https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
+
+Taruh di folder `assets/hand_landmarker.task`

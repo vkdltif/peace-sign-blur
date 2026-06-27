@@ -10,6 +10,8 @@ Cara pakai:
 3. Jalankan: python main.py
 4. Tunjukkan PEACE SIGN (✌️) ke kamera untuk trigger blur + lagu
 5. Lagu akan tetap berjalan & blur tetap aktif sampai lagu selesai
+
+NOTE: Menggunakan MediaPipe Tasks API (HandLandmarker) - kompatibel versi 0.10.30+
 """
 
 import cv2
@@ -17,6 +19,7 @@ import numpy as np
 import pygame
 import time
 import os
+import urllib.request
 from collections import deque
 
 # ==================== KONFIGURASI ====================
@@ -34,17 +37,35 @@ FINGER_THRESHOLD = 0.05
 # Berapa frame peace sign berturut-turut sebelum trigger (anti-noise)
 TRIGGER_FRAMES = 5
 
-# ==================== INISIALISASI MEDIA PIPE ====================
-try:
-    import mediapipe as mp
-    mp_hands = mp.solutions.hands
-    mp_drawing = mp.solutions.drawing_utils
-    mp_drawing_styles = mp.solutions.drawing_styles
-    MEDIAPIPE_AVAILABLE = True
-except ImportError:
-    MEDIAPIPE_AVAILABLE = False
-    print("ERROR: MediaPipe tidak terinstall. Jalankan: pip install mediapipe")
-    exit(1)
+# ==================== INISIALISASI MEDIAPIPE ====================
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+from mediapipe import solutions
+from mediapipe.framework.formats import landmark_pb2
+
+# Download model kalau belum ada
+MODEL_PATH = "assets/hand_landmarker.task"
+MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+
+def download_model():
+    if not os.path.exists(MODEL_PATH):
+        os.makedirs("assets", exist_ok=True)
+        print(f"[INFO] Downloading model...")
+        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+        print(f"[INFO] Model downloaded: {MODEL_PATH}")
+
+download_model()
+
+# Setup HandLandmarker
+base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
+options = vision.HandLandmarkerOptions(
+    base_options=base_options,
+    num_hands=2,
+    min_hand_detection_confidence=0.7,
+    min_hand_presence_confidence=0.5,
+    min_tracking_confidence=0.5
+)
 
 # ==================== INISIALISASI PYGAME ====================
 pygame.mixer.init()
@@ -58,9 +79,10 @@ last_trigger_time = 0
 # History frame untuk motion blur
 frame_history = deque(maxlen=5)
 
-def is_finger_extended(landmarks, tip_id, pip_id):
+# ==================== FUNGSI DETEKSI ====================
+def is_finger_extended(landmarks, tip_idx, pip_idx):
     """Cek apakah jari terbuka (tip di atas pip untuk jari telunjuk, tengah, manis, kelingking)"""
-    return landmarks[tip_id].y < landmarks[pip_id].y - FINGER_THRESHOLD
+    return landmarks[tip_idx].y < landmarks[pip_idx].y - FINGER_THRESHOLD
 
 def is_peace_sign(landmarks):
     """
@@ -78,6 +100,31 @@ def is_peace_sign(landmarks):
 
     return index_open and middle_open and ring_closed and pinky_closed
 
+def draw_landmarks_on_image(rgb_image, detection_result):
+    """Gambar landmark tangan di frame"""
+    hand_landmarks_list = detection_result.hand_landmarks
+    annotated_image = np.copy(rgb_image)
+
+    for idx in range(len(hand_landmarks_list)):
+        hand_landmarks = hand_landmarks_list[idx]
+
+        hand_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
+        hand_landmarks_proto.landmark.extend([
+            landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z) 
+            for landmark in hand_landmarks
+        ])
+
+        solutions.drawing_utils.draw_landmarks(
+            annotated_image,
+            hand_landmarks_proto,
+            solutions.hands.HAND_CONNECTIONS,
+            solutions.drawing_styles.get_default_hand_landmarks_style(),
+            solutions.drawing_styles.get_default_hand_connections_style()
+        )
+
+    return annotated_image
+
+# ==================== FUNGSI BLUR ====================
 def apply_aesthetic_blur(frame):
     """
     Efek blur aesthetic seperti blur jepretan kamera.
@@ -173,12 +220,8 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-    with mp_hands.Hands(
-        static_image_mode=False,
-        max_num_hands=2,
-        min_detection_confidence=0.7,
-        min_tracking_confidence=0.5
-    ) as hands:
+    # Buat HandLandmarker
+    with vision.HandLandmarker.create_from_options(options) as landmarker:
 
         while True:
             ret, frame = cap.read()
@@ -191,13 +234,14 @@ def main():
             # Simpan frame untuk ghosting effect
             frame_history.append(frame.copy())
 
-            # Konversi ke RGB untuk MediaPipe
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = hands.process(rgb)
+            # Konversi ke MediaPipe Image
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
+
+            # Deteksi tangan
+            detection_result = landmarker.detect(mp_image)
 
             # Cek apakah lagu masih playing
             if music_playing and not pygame.mixer.music.get_busy():
-                # Lagu sudah selesai
                 music_playing = False
                 blur_active = False
                 peace_counter = 0
@@ -205,29 +249,23 @@ def main():
 
             # Deteksi peace sign (hanya jika lagu tidak sedang playing)
             peace_detected = False
-            if not music_playing and results.multi_hand_landmarks:
-                for hand_landmarks in results.multi_hand_landmarks:
-                    if is_peace_sign(hand_landmarks.landmark):
+            annotated_frame = frame.copy()
+
+            if not music_playing and detection_result.hand_landmarks:
+                for hand_landmarks in detection_result.hand_landmarks:
+                    if is_peace_sign(hand_landmarks):
                         peace_detected = True
-                        # Gambar landmark untuk visual feedback
-                        try:
-                            mp_drawing.draw_landmarks(
-                                frame, hand_landmarks, mp_hands.HAND_CONNECTIONS,
-                                mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=4),
-                                mp_drawing.DrawingSpec(color=(0, 200, 0), thickness=2)
-                            )
-                        except Exception:
-                            # Fallback kalau drawing_styles bermasalah
-                            mp_drawing.draw_landmarks(
-                                frame, hand_landmarks, mp_hands.HAND_CONNECTIONS
-                            )
+                        # Gambar landmark hijau untuk peace sign
+                        annotated_frame = draw_landmarks_on_image(frame, detection_result)
                         break
+                    else:
+                        # Gambar landmark biasa
+                        annotated_frame = draw_landmarks_on_image(frame, detection_result)
 
             # Logic trigger dengan counter (anti-noise)
             if peace_detected:
                 peace_counter += 1
-                # Tampilkan counter di frame
-                cv2.putText(frame, f"Detecting: {peace_counter}/{TRIGGER_FRAMES}", (20, 130), 
+                cv2.putText(annotated_frame, f"Detecting: {peace_counter}/{TRIGGER_FRAMES}", (20, 130), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)
 
                 if peace_counter >= TRIGGER_FRAMES:
@@ -248,10 +286,11 @@ def main():
 
             # Apply blur jika aktif
             if blur_active:
-                frame = apply_aesthetic_blur(frame)
+                display_frame = apply_aesthetic_blur(frame)
                 status = "BLUR AKTIF - Lagu Playing"
                 color = (255, 100, 200)  # Pink
             else:
+                display_frame = annotated_frame
                 if peace_detected:
                     status = "Peace Sign Terdeteksi!"
                     color = (0, 255, 0)  # Hijau
@@ -259,9 +298,9 @@ def main():
                     status = "Standby - Tunjukkan Peace Sign"
                     color = (200, 200, 200)  # Abu-abu
 
-            frame = draw_ui(frame, status, color, h, w)
+            display_frame = draw_ui(display_frame, status, color, h, w)
 
-            cv2.imshow("Peace Sign Blur Camera", frame)
+            cv2.imshow("Peace Sign Blur Camera", display_frame)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
