@@ -8,13 +8,12 @@ Cara pakai:
 1. Taruh lagu MP3/WAV kamu di folder assets/ (rename jadi your_music.mp3 atau sesuaikan di config)
 2. Install dependency: pip install -r requirements.txt
 3. Jalankan: python main.py
-4. Tunjukkan peace sign (✌️) ke kamera untuk trigger blur + lagu
+4. Tunjukkan PEACE SIGN (✌️) ke kamera untuk trigger blur + lagu
 5. Lagu akan tetap berjalan & blur tetap aktif sampai lagu selesai
 """
 
 import cv2
 import numpy as np
-import mediapipe as mp
 import pygame
 import time
 import os
@@ -35,11 +34,20 @@ FINGER_THRESHOLD = 0.05
 # Berapa frame peace sign berturut-turut sebelum trigger (anti-noise)
 TRIGGER_FRAMES = 5
 
-# ==================== INISIALISASI ====================
-pygame.mixer.init()
+# ==================== INISIALISASI MEDIA PIPE ====================
+try:
+    import mediapipe as mp
+    mp_hands = mp.solutions.hands
+    mp_drawing = mp.solutions.drawing_utils
+    mp_drawing_styles = mp.solutions.drawing_styles
+    MEDIAPIPE_AVAILABLE = True
+except ImportError:
+    MEDIAPIPE_AVAILABLE = False
+    print("ERROR: MediaPipe tidak terinstall. Jalankan: pip install mediapipe")
+    exit(1)
 
-mp_hands = mp.solutions.hands
-mp_drawing = mp.solutions.drawing_utils
+# ==================== INISIALISASI PYGAME ====================
+pygame.mixer.init()
 
 # Variabel state
 music_playing = False
@@ -63,8 +71,8 @@ def is_peace_sign(landmarks):
     - Kelingking (20) tertutup
     - Ibu jari (4) bebas (bisa terbuka/tutup)
     """
-    index_open = is_finger_extended(landmarks, 8, 6)      # Telunjuk
-    middle_open = is_finger_extended(landmarks, 12, 10)   # Jari tengah
+    index_open = is_finger_extended(landmarks, 8, 6)       # Telunjuk
+    middle_open = is_finger_extended(landmarks, 12, 10)    # Jari tengah
     ring_closed = not is_finger_extended(landmarks, 16, 14)  # Jari manis
     pinky_closed = not is_finger_extended(landmarks, 20, 18) # Kelingking
 
@@ -131,7 +139,7 @@ def apply_aesthetic_blur(frame):
 
     return aesthetic
 
-def draw_ui(frame, status_text, color):
+def draw_ui(frame, status_text, color, h, w):
     """Gambar status text di pojok kiri atas"""
     cv2.putText(frame, status_text, (20, 50), 
                 cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3, cv2.LINE_AA)
@@ -154,7 +162,7 @@ def draw_ui(frame, status_text, color):
 
 # ==================== MAIN LOOP ====================
 def main():
-    global music_playing, blur_active, peace_counter, last_trigger_time, h, w
+    global music_playing, blur_active, peace_counter, last_trigger_time
 
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
@@ -202,11 +210,17 @@ def main():
                     if is_peace_sign(hand_landmarks.landmark):
                         peace_detected = True
                         # Gambar landmark untuk visual feedback
-                        mp_drawing.draw_landmarks(
-                            frame, hand_landmarks, mp_hands.HAND_CONNECTIONS,
-                            mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=4),
-                            mp_drawing.DrawingSpec(color=(0, 200, 0), thickness=2)
-                        )
+                        try:
+                            mp_drawing.draw_landmarks(
+                                frame, hand_landmarks, mp_hands.HAND_CONNECTIONS,
+                                mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=4),
+                                mp_drawing.DrawingSpec(color=(0, 200, 0), thickness=2)
+                            )
+                        except Exception:
+                            # Fallback kalau drawing_styles bermasalah
+                            mp_drawing.draw_landmarks(
+                                frame, hand_landmarks, mp_hands.HAND_CONNECTIONS
+                            )
                         break
 
             # Logic trigger dengan counter (anti-noise)
@@ -245,7 +259,7 @@ def main():
                     status = "Standby - Tunjukkan Peace Sign"
                     color = (200, 200, 200)  # Abu-abu
 
-            frame = draw_ui(frame, status, color)
+            frame = draw_ui(frame, status, color, h, w)
 
             cv2.imshow("Peace Sign Blur Camera", frame)
 

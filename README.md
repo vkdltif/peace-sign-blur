@@ -14,7 +14,7 @@ Aplikasi webcam Python yang mendeteksi **peace sign** (✌️) dan memberikan ef
 
 ```bash
 # 1. Clone repo ini
-git clone https://github.com/vkdltif/peace-sign-blur.git
+git clone https://github.com/username/peace-sign-blur.git
 cd peace-sign-blur
 
 # 2. Install dependency
@@ -74,3 +74,4 @@ Efek blur yang digunakan:
 - Pastikan pencahayaan cukup terang agar deteksi tangan akurat
 - Peace sign = telunjuk & jari tengah terbuka, jari manis & kelingking tertutup
 - Ibu jari bebas (bisa terbuka/tutup)
+- Kalau muncul error "Could not find a version", pastikan Python kamu 3.9+ dan pip sudah update: `pip install --upgrade pip`
